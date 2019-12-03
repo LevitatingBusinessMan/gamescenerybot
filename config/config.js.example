@@ -1,0 +1,6 @@
+const config = {
+    userAgent: "GameScenery bot/v1.0.0",
+    clientId: "put your client id here",
+    clientSecret: "put your client secret here",
+    refreshToken: "put your refresh token here"
+};

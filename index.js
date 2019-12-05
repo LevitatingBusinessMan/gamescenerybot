@@ -33,7 +33,7 @@ function handleExit () {
 
 x.on("post", handleSubmission)
 
-const delayedComments = []
+//const delayedComments = []
 function handleSubmission(post) {
     if (handledPosts.includes(post.id))
         return
@@ -49,13 +49,26 @@ function handleSubmission(post) {
         console.log(`[${post.id}] Calculating size`)
         var size = sizeOf(buffer)
         
-        if (delayedComments.lenth)
+        flair(post, size)
+
+        /* if (delayedComments.lenth)
             delayedComments.push({post, size})
-        else comment({post, size})
+        else comment({post, size}) */
     })
 
 }
 
+function flair(post, size) {
+    post.assignFlair({text: `${size.width}x${size.height}`}).then(npost => {
+        console.log(`[${post.id}] Assigned flair`)
+        if (!handledPosts.includes(post.id))
+            handledPosts.push(post.id)
+    }).catch(err => {
+        console.error(`[${post.id}] Error assigning flair: ${err.message}`)
+    })
+}
+
+/* 
 function comment({post, size}) {
     const splitTitle = post.title.split("]")
     let title = splitTitle[splitTitle.length-1].trim()
@@ -117,12 +130,5 @@ function handleComments(){
                 handleComments()
         })
     }
-}    
-
-function flair(post, size) {
-    post.assignFlair({text: `${size.width}x${size.height}`}).then(npost => {
-        console.log(`[${post.id}] Assigned flair`)
-    }).catch(err => {
-        console.error(`[${post.id}] Error assigning flair: ${err.message}`)
-    })
 }
+*/

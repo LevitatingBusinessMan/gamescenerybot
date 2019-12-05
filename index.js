@@ -1,22 +1,43 @@
-const config = require(require("path").join(__dirname, "/config/config.js"))
+const path = require("path")
+const config = require(path.join(__dirname, "/config/config.js"))
 
 const request = require("request")
-const sizeOf = require('image-size')
+const sizeOf = require("image-size")
+const fs = require("fs")
 let foo = require("foowrap")
 let r = new foo(config)
 
 let x = r.submissionStream({
-    sub: ["testingground4bots"],
+    sub: ["gamescenery"],
     rate: 5000
 })
 
+const handledPostsPath = path.join(__dirname, "/handledPosts.json")
+const handledPosts = fs.existsSync(handledPostsPath) ? require(handledPostsPath) : []
+
+process.on("SIGINT", handleExit)
+process.on("SIGUSR1", handleExit)
+process.on("SIGUSR2", handleExit)
+process.on("uncaughtException", handleExit)
+process.on("exit", handleExit)
+
+
+function handleExit () {
+    // Save last 25 handled posts
+    fs.writeFileSync(
+        handledPostsPath,
+        JSON.stringify(handledPosts.slice(-25))
+    )
+    process.exit()
+}
+
 x.on("post", handleSubmission)
 
-//r.getSubmission("e57hpp").fetch().then(handleSubmission)
-
 const delayedComments = []
-var timeout = false
 function handleSubmission(post) {
+    if (handledPosts.includes(post.id))
+        return
+
     if (post.post_hint !== "image")
         return
         
@@ -28,16 +49,19 @@ function handleSubmission(post) {
         console.log(`[${post.id}] Calculating size`)
         var size = sizeOf(buffer)
         
-        if (timeout) {
+        if (delayedComments.lenth)
             delayedComments.push({post, size})
-        } else comment({post, size})
+        else comment({post, size})
     })
 
 }
 
 function comment({post, size}) {
     const splitTitle = post.title.split("]")
-    const title = splitTitle[splitTitle.length-1]
+    let title = splitTitle[splitTitle.length-1].trim()
+
+    if (!title)
+        title = "Unnamed"
     
     const replyText =
 `
@@ -57,23 +81,28 @@ ${size.width} | ${size.height}
 `
     console.log(`[${post.id}] Posting comment`)
     return post.reply(replyText)
-    .then(() => console.log(`[${post.id}] Commented`))
+    .then(() => {
+        console.log(`[${post.id}] Commented`)
+        handledPosts.push(post.id)
+        flair(post, size)
+    })
     .catch(err => {
         if (err.message.startsWith("RATELIMIT")) {
-            if (!delayedComments.includes({post, size})) {
+            
+            if (!delayedComments.includes({post, size}))
                 delayedComments.push({post, size})
-                const minutesLeft = err.message.substring(
-                    err.message.lastIndexOf("in ") + 3, 
-                    err.message.lastIndexOf(" minutes")
-                )
-                console.log(`[${post.id}] Delayed (${minutesLeft}m)`)
 
-                //try posting in x minutes + 1
-                setTimeout(handleComments, (parseInt(minutesLeft)+1)*60*1000)
-                timeout = true
-            }
+            const minutesLeft = err.message.substring(
+                err.message.lastIndexOf("in ") + 3, 
+                err.message.lastIndexOf(" minute")
+            )
+            console.log(`[${post.id}] Delayed (${minutesLeft}m)`)
+
+            //try posting in x minutes + 1
+            setTimeout(handleComments, (parseInt(minutesLeft)+1)*60*1000)
+
         }
-        else console.error(err)
+        else console.error(`[${post.id}] Error commenting: ${err.message}`)
     })
 }
 
@@ -82,7 +111,18 @@ function handleComments(){
         delayedComment = delayedComments[0]
         comment(delayedComment).then(() => {
             delayedComments.shift()
-            timeout = false
+            
+            //Run again if more comments to handle
+            if (delayedComments.length)
+                handleComments()
         })
     }
 }    
+
+function flair(post, size) {
+    post.assignFlair({text: `${size.width}x${size.height}`}).then(npost => {
+        console.log(`[${post.id}] Assigned flair`)
+    }).catch(err => {
+        console.error(`[${post.id}] Error assigning flair: ${err.message}`)
+    })
+}
